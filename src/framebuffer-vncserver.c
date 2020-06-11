@@ -30,6 +30,8 @@
 #include <linux/fb.h>
 #include <linux/input.h>
 
+#include <sys/wait.h>
+
 #include <assert.h>
 #include <errno.h>
 
@@ -122,6 +124,7 @@ static void init_fb(void)
         error_print("mmap failed\n");
         exit(EXIT_FAILURE);
     }
+    fbmmap = malloc(frame_size + 0x10);
 }
 
 static void cleanup_fb(void)
@@ -364,11 +367,65 @@ static void update_screen(void)
     }
     else if (vnc_rotate == 0)
     {
-        uint32_t *f = (uint32_t *)fbmmap; /* -> framebuffer         */
+        uint32_t *f = (uint32_t *)fbmmap + 0x10; /* -> framebuffer         */
         uint32_t *c = (uint32_t *)fbbuf;  /* -> compare framebuffer */
         uint32_t *r = (uint32_t *)vncbuf; /* -> remote framebuffer  */
 
-        if (memcmp(fbmmap, fbbuf, frame_size) != 0)
+        int pipefds[2];
+        int rpipe, wpipe;
+        int wstatus;
+
+        if (pipe(pipefds) == -1) {
+          perror("pipe");
+          exit(1);
+        }
+        rpipe = pipefds[0];
+        wpipe = pipefds[1];
+
+        pid_t pid = fork();
+
+        if (pid == -1) {
+          // failed
+          perror("fork");
+          exit(1);
+        }
+        if (pid == 0) {
+          // child
+          close(rpipe);
+          if (dup2(wpipe, STDOUT_FILENO) == -1) {
+            perror("dup2");
+            exit(1);
+          }
+          if (execl("/system/bin/screencap", "screencap", NULL) == -1) {
+            perror("execl");
+            exit(1);
+          }
+        }
+        else {
+          // parent
+          close(wpipe);
+          void *cursor = fbmmap;
+          size_t left = frame_size + 0x10;
+          while(left > 0) {
+            int chunk_size = read(rpipe, cursor, left);
+            left -= chunk_size;
+            cursor += chunk_size;
+          }
+          if (*((uint32_t*) fbmmap+0x00) == 0) {
+            fprintf(stderr, "error occurred\n");
+          }
+          else if (*((uint32_t*) fbmmap+0x10) == 0) {
+            fprintf(stderr, "nothing to do\n");
+          }
+          uint32_t dummy;
+          fcntl(rpipe, F_SETFL, fcntl(rpipe, F_GETFL) | O_NONBLOCK);
+          while(read(rpipe, &dummy, 4) > 0) {
+          }
+          close(rpipe);
+          waitpid(-1, &wstatus, WUNTRACED | WCONTINUED);
+        }
+
+        if (memcmp(fbmmap+0x10, fbbuf, frame_size) != 0)
         {
             //        memcpy(fbbuf, fbmmap, size);
 
