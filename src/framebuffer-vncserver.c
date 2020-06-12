@@ -85,6 +85,13 @@ static struct varblock_t
     int rfb_maxy;
 } varblock;
 
+typedef struct {
+  uint32_t width;
+  uint32_t height;
+  uint32_t stride;
+  uint32_t pixel;
+} screencap10_t;
+
 /*****************************************************************************/
 
 static void read_exactly(int fd, void *ptr, size_t len) {
@@ -421,6 +428,22 @@ static void update_screen(void)
           }
           else if (*((uint32_t*) fbmmap+0x10) == 0) {
             fprintf(stderr, "nothing to do\n");
+          }
+          // make sure orientation did't change
+          screencap10_t *hdr = (screencap10_t*) fbmmap;
+          if (scrinfo.xres != hdr->width || scrinfo.yres != hdr->height) {
+            int rframe_size = bits_per_pixel == 1 ? frame_size * 8 : frame_size;
+            int rbytespp = bits_per_pixel == 1 ? 1 : bytespp;
+            void *oldfb = server->frameBuffer;
+            // TODO; update also bits_per_pixel
+            void *newfb = malloc(hdr->width * hdr->height * bits_per_pixel);
+            assert(newfb != NULL);
+            rfbNewFramebuffer(server, newfb, hdr->width, hdr->height, BITS_PER_SAMPLE, SAMPLES_PER_PIXEL, rbytespp);
+            scrinfo.xres = hdr->width;
+            scrinfo.yres = hdr->height;
+            vncbuf = newfb;
+            r = (uint32_t *) vncbuf;
+            free(oldfb);
           }
           uint32_t dummy;
           fcntl(rpipe, F_SETFL, fcntl(rpipe, F_GETFL) | O_NONBLOCK);
