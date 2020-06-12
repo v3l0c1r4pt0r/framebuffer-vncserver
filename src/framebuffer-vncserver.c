@@ -61,6 +61,7 @@ static unsigned short int *fbbuf;
 
 static int vnc_port = 5900;
 static int vnc_rotate = 0;
+static int force_rotate = 0;
 static rfbScreenInfoPtr server;
 static size_t bytespp;
 static unsigned int bits_per_pixel;
@@ -661,6 +662,9 @@ int main(int argc, char **argv)
                 case 'v':
                     verbose = 1;
                     break;
+                case 'R':
+                    force_rotate = 1;
+                    break;
                 }
             }
             i++;
@@ -690,6 +694,14 @@ int main(int argc, char **argv)
     else
     {
         info_print("No touch device\n");
+    }
+
+    if (force_rotate == 1) {
+      // swap x and y resolution
+      // FIXME; hacky hack
+      scrinfo.xres += scrinfo.yres;
+      scrinfo.yres = scrinfo.xres - scrinfo.yres;
+      scrinfo.xres -= scrinfo.yres;
     }
 
     info_print("Initializing VNC server:\n");
