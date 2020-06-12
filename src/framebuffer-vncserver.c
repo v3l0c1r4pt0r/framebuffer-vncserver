@@ -87,6 +87,16 @@ static struct varblock_t
 
 /*****************************************************************************/
 
+static void read_exactly(int fd, void *ptr, size_t len) {
+  void *cursor = ptr;
+  size_t left = len;
+  while(left > 0) {
+    int chunk_size = read(fd, cursor, left);
+    left -= chunk_size;
+    cursor += chunk_size;
+  }
+}
+
 static void init_fb(void)
 {
     size_t pixels;
@@ -405,13 +415,7 @@ static void update_screen(void)
         else {
           // parent
           close(wpipe);
-          void *cursor = fbmmap;
-          size_t left = frame_size + 0x10;
-          while(left > 0) {
-            int chunk_size = read(rpipe, cursor, left);
-            left -= chunk_size;
-            cursor += chunk_size;
-          }
+          read_exactly(rpipe, fbmmap, frame_size + 0x10);
           if (*((uint32_t*) fbmmap+0x00) == 0) {
             fprintf(stderr, "error occurred\n");
           }
