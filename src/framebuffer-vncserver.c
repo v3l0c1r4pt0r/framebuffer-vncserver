@@ -49,7 +49,7 @@
 #define BITS_PER_SAMPLE 5
 #define SAMPLES_PER_PIXEL 2
 
-static char fb_device[256] = "/dev/fb0";
+static char fb_device[256] = "/dev/graphics/fb0";
 static char touch_device[256] = "";
 static char kbd_device[256] = "";
 
