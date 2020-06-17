@@ -103,6 +103,70 @@ static void read_exactly(int fd, void *ptr, size_t len) {
   }
 }
 
+/**
+ * Capture screen using screencap utility
+ * \param[out] hdr pointer to structure describing the screenshot
+ * \param[out] pixels pointer to buffer, where screenshot will be stored
+ */
+static void capture_screen(screencap10_t *hdr, void *pixels) {
+  int pipefds[2];
+  int rpipe, wpipe;
+  int wstatus;
+
+  size_t frame_size;
+
+  if (pipe(pipefds) == -1) {
+    perror("pipe");
+    exit(1);
+  }
+  rpipe = pipefds[0];
+  wpipe = pipefds[1];
+
+  pid_t pid = fork();
+
+  if (pid == -1) {
+    // failed
+    perror("fork");
+    exit(1);
+  }
+  if (pid == 0) {
+    // child
+    close(rpipe);
+    if (dup2(wpipe, STDOUT_FILENO) == -1) {
+      perror("dup2");
+      exit(1);
+    }
+    if (execl("/system/bin/screencap", "screencap", NULL) == -1) {
+      perror("execl");
+      exit(1);
+    }
+  }
+  else {
+    // parent
+    close(wpipe);
+    read_exactly(rpipe, hdr, 0x10);
+    if (*((uint32_t*) hdr) == 0) {
+      fprintf(stderr, "error occurred\n");
+      exit(1);
+    }
+
+    frame_size = hdr->width * hdr->height * 4; // TODO: bpp
+    read_exactly(rpipe, pixels, frame_size);
+    if (*((uint32_t*) pixels) == 0 && screen_state == 1) {
+      screen_state = 0;
+      fprintf(stderr, "screen turned off\n");
+    }
+  }
+
+  // cleanup
+  uint32_t dummy;
+  fcntl(rpipe, F_SETFL, fcntl(rpipe, F_GETFL) | O_NONBLOCK);
+  while(read(rpipe, &dummy, 4) > 0) {
+  }
+  close(rpipe);
+  waitpid(-1, &wstatus, WUNTRACED | WCONTINUED);
+}
+
 static void init_fb(void)
 {
     size_t pixels;
@@ -388,48 +452,10 @@ static void update_screen(void)
         uint32_t *c = (uint32_t *)fbbuf;  /* -> compare framebuffer */
         uint32_t *r = (uint32_t *)vncbuf; /* -> remote framebuffer  */
 
-        int pipefds[2];
-        int rpipe, wpipe;
-        int wstatus;
+        screencap10_t *hdr = (screencap10_t*) fbmmap;
+        capture_screen(hdr, fbmmap + sizeof(screencap10_t));
 
-        if (pipe(pipefds) == -1) {
-          perror("pipe");
-          exit(1);
-        }
-        rpipe = pipefds[0];
-        wpipe = pipefds[1];
-
-        pid_t pid = fork();
-
-        if (pid == -1) {
-          // failed
-          perror("fork");
-          exit(1);
-        }
-        if (pid == 0) {
-          // child
-          close(rpipe);
-          if (dup2(wpipe, STDOUT_FILENO) == -1) {
-            perror("dup2");
-            exit(1);
-          }
-          if (execl("/system/bin/screencap", "screencap", NULL) == -1) {
-            perror("execl");
-            exit(1);
-          }
-        }
-        else {
-          // parent
-          close(wpipe);
-          read_exactly(rpipe, fbmmap, frame_size + 0x10);
-          if (*((uint32_t*) fbmmap+0x00) == 0) {
-            fprintf(stderr, "error occurred\n");
-          }
-          else if (*((uint32_t*) fbmmap+0x10) == 0) {
-            fprintf(stderr, "nothing to do\n");
-          }
           // make sure orientation did't change
-          screencap10_t *hdr = (screencap10_t*) fbmmap;
           if (scrinfo.xres != hdr->width || scrinfo.yres != hdr->height) {
             int rframe_size = bits_per_pixel == 1 ? frame_size * 8 : frame_size;
             int rbytespp = bits_per_pixel == 1 ? 1 : bytespp;
@@ -443,13 +469,6 @@ static void update_screen(void)
             vncbuf = newfb;
             r = (uint32_t *) vncbuf;
             free(oldfb);
-          }
-          uint32_t dummy;
-          fcntl(rpipe, F_SETFL, fcntl(rpipe, F_GETFL) | O_NONBLOCK);
-          while(read(rpipe, &dummy, 4) > 0) {
-          }
-          close(rpipe);
-          waitpid(-1, &wstatus, WUNTRACED | WCONTINUED);
         }
 
         if (memcmp(fbmmap+0x10, fbbuf, frame_size) != 0)
