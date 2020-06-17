@@ -151,7 +151,9 @@ static void capture_screen(screencap10_t *hdr, void *pixels) {
     }
 
     frame_size = hdr->width * hdr->height * 4; // TODO: bpp
-    read_exactly(rpipe, pixels, frame_size);
+    if (pixels != NULL) {
+      read_exactly(rpipe, pixels, frame_size);
+    }
     if (*((uint32_t*) pixels) == 0 && screen_state == 1) {
       screen_state = 0;
       fprintf(stderr, "screen turned off\n");
@@ -171,50 +173,34 @@ static void init_fb(void)
 {
     size_t pixels;
 
-    if ((fbfd = open(fb_device, O_RDONLY)) == -1)
-    {
-        error_print("cannot open fb device %s\n", fb_device);
-        exit(EXIT_FAILURE);
-    }
+    screencap10_t hdr = {0};
+    capture_screen(&hdr, NULL);
 
-    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &scrinfo) != 0)
-    {
-        error_print("ioctl error\n");
-        exit(EXIT_FAILURE);
-    }
+    scrinfo.xres = 720;
+    scrinfo.yres = 1440;
+    scrinfo.xres_virtual = 720;
+    scrinfo.yres_virtual = 1440;
+    scrinfo.xoffset = 0;
+    scrinfo.yoffset = 0;
+    scrinfo.red.offset = 0;
+    scrinfo.red.length = 8;
+    scrinfo.green.offset = 8;
+    scrinfo.green.length = 8;
+    scrinfo.blue.offset = 16;
+    scrinfo.blue.length = 8;
+    scrinfo.bits_per_pixel = 32;
 
     pixels = scrinfo.xres * scrinfo.yres;
     bytespp = scrinfo.bits_per_pixel / 8;
     bits_per_pixel = scrinfo.bits_per_pixel;
     frame_size = pixels * bits_per_pixel / 8;
 
-    info_print("  xres=%d, yres=%d, xresv=%d, yresv=%d, xoffs=%d, yoffs=%d, bpp=%d\n",
-               (int)scrinfo.xres, (int)scrinfo.yres,
-               (int)scrinfo.xres_virtual, (int)scrinfo.yres_virtual,
-               (int)scrinfo.xoffset, (int)scrinfo.yoffset,
-               (int)scrinfo.bits_per_pixel);
-    info_print("  offset:length red=%d:%d green=%d:%d blue=%d:%d \n",
-               (int)scrinfo.red.offset, (int)scrinfo.red.length,
-               (int)scrinfo.green.offset, (int)scrinfo.green.length,
-               (int)scrinfo.blue.offset, (int)scrinfo.blue.length);
-
-    fbmmap = mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fbfd, 0);
-
-    if (fbmmap == MAP_FAILED)
-    {
-        error_print("mmap failed\n");
-        exit(EXIT_FAILURE);
-    }
     fbmmap = malloc(frame_size + 0x10);
 }
 
 static void cleanup_fb(void)
 {
-    if (fbfd != -1)
-    {
-        close(fbfd);
-        fbfd = -1;
-    }
+  // intentionally do nothing
 }
 
 static void keyevent(rfbBool down, rfbKeySym key, rfbClientPtr cl)
