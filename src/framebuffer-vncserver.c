@@ -154,10 +154,6 @@ static void capture_screen(screencap10_t *hdr, void *pixels) {
     if (pixels != NULL) {
       read_exactly(rpipe, pixels, frame_size);
     }
-    if (*((uint32_t*) pixels) == 0 && screen_state == 1) {
-      screen_state = 0;
-      fprintf(stderr, "screen turned off\n");
-    }
   }
 
   // cleanup
