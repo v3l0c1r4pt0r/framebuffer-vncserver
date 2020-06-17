@@ -176,10 +176,10 @@ static void init_fb(void)
     screencap10_t hdr = {0};
     capture_screen(&hdr, NULL);
 
-    scrinfo.xres = 720;
-    scrinfo.yres = 1440;
-    scrinfo.xres_virtual = 720;
-    scrinfo.yres_virtual = 1440;
+    scrinfo.xres = hdr.width;
+    scrinfo.yres = hdr.height;
+    scrinfo.xres_virtual = scrinfo.xres;
+    scrinfo.yres_virtual = scrinfo.yres;
     scrinfo.xoffset = 0;
     scrinfo.yoffset = 0;
     scrinfo.red.offset = 0;
